@@ -1,0 +1,99 @@
+#!/usr/bin/perl
+### read the db from s.magetic and save into file
+#### this index works with CMS system (file)
+
+use CGI;
+use CGI::Carp qw(warningsToBrowser fatalsToBrowser);
+$query = new CGI;
+
+my $page = $query->param('page');
+$ip = $query->remote_host;
+
+our $path = "/var/www/cgi-bin/CMS";
+our $html_path = "/var/www/cgi-bin/CMS/HTML";
+our $html_dir = "/var/www/html/CMS";
+
+$default_page="main.html";
+
+$date=`date`;
+chomp $date;
+
+
+####################### read browser url and get $page - a
+
+if (!$page){
+$url = $query->self_url;
+my @tmp = split /\//, $url;
+
+        foreach(@tmp) {
+                chomp;
+                if ($_ =~ "page="){
+                    $page=$_;
+                    $page =~ s/page=//gi;
+                $page =~ s/page\?//gi;
+                    } }
+      }
+
+##### if couldent find the html page in url use defult
+if ($page eq ""){ $page=$default_page; } ##### if there is no page use defult (main.html)
+
+###### tring to get the html main page, from /cgi_path/html
+######  if not exsist try to get it from /www/html/dir  and sign it.
+#
+
+if ($page =~ m/html/){ } else{ $page="$page.html"; }
+
+$get_html=`cat $path/HTML/$page`;
+########## if there is no $page under /cgi/$path  then check if there is on /www/htm/$path 
+if ($get_html eq "") {
+        $get_html=`cat $html_dir/$page`;
+      }
+
+        else {  $flag1="1";
+        }
+      
+
+
+
+######### get the heade footer and page_html
+
+$header=`cat $path/HTML/header.html`;
+$footer=`cat $path/HTML/footer.html`;
+
+##################### print html  if $html_from_dir = 1  the html page located at www/html/dir/
+if ($flag1 eq "1") {
+
+print "Content-Type: text/html \n\n";
+
+print qq~
+$header
+$get_html
+$footer ~
+
+        }
+
+################## print the html page from  located at www/html/dir/  without header footer
+
+        else {
+          print "Content-Type: text/html \n\n";
+          print qq~$get_html    ~;
+
+  }
+
+####################### write logs -
+
+sub write_logs
+{
+$log="$date|$ip|$cidd|$url|<br>";
+
+open(GREP, ">>$path/LOG/site.log");
+       print GREP "$log\n";
+      close GREP;
+}
+
+write_logs();
+
+
+
+1;
+

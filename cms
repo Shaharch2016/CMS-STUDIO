@@ -1,0 +1,471 @@
+#!/usr/bin/perl
+use CGI;
+use CGI::Carp qw(warningsToBrowser fatalsToBrowser);
+$query = new CGI;
+use CGI qw/:standard/; 
+### CMS perl system to edit the html inside pages - v6 -  9/1/2023
+###
+### all pages need to be in $path/HTML/ *.html   all pages pirectory
+### every change will save the html page in  $path/HTML/BACKUP/  backup directory
+
+$project="CMS MAIN PROJECT";
+our $path = "/var/www/cgi-bin/CMS";
+our $html_dir = "$path/HTML";
+our $html_path = "/var/www/html/CMS";
+$url="http://localhost/cgi-bin/CMS";
+$images_url="http://localhost/CMS/images";
+
+$editor_choice = $query->param('edit');  if (!$editor_choice) {$editor_choice="html"; }
+$content = $query->param('content');   #### for saving the changes after post
+$save_page = $query->param('save_page'); if ($save_page) { $page=$save_page;  }  ### page to save 
+$page = $query->param('page');  ## if (!$page) { $page="new_page.html"; } ## show the page text  ++ default page if empty
+if ($save_page) { $page=$save_page;  }  ### page to save
+if ($page =~ m/html/ or $page =~ m/css/){ } else{ $page="$page.html"; }        
+if ($page =~ m/BACKUP/){ $page =~s/ /+/gi; } 
+
+$menu=`cat $html_dir/menu.html`;
+$date=`date -Is`; chomp $date;
+
+############################## start :-) 
+### 
+
+html_start();
+html_images();
+get_pages();
+print_left_menu();
+#print_menu();
+
+if ($editor_choice eq "home")    { print_menu();  editor_text(); } 
+if ($editor_choice eq "text")    { editor_visual(); }
+if ($editor_choice eq "recover") { recover_html(); }
+if ($editor_choice eq "images")  { show_images (); upload_images(); }
+if ($editor_choice eq "html")    { print_menu(); editor_text(); }    
+if ($editor_choice eq "editor2")    { editor_text_2(); }
+
+form_save();
+
+
+
+
+sub get_pages { 
+
+    ######## PAGES Structure are 
+    @pages_Structure=`ls $html_dir/ |grep -E 'header|footer'`;
+        foreach(@pages_Structure) {
+            chomp;
+            $pages_Structure.=qq~ <a href=?page=$_> $_ </a> ~; 
+            $pages_Structure.=qq~ <a href=$url/index?page=$_ target="_blank"> $img_newwindow_icon</a> &nbsp; ~;
+        }
+        if (!$pages_Structure) { $pages_Structure = "( build header.html and bottom.html  ) "; }
+    ######## get html pages list 
+    @pages_list=`ls $html_dir/ |grep -E 'html|css'`;
+        foreach(@pages_list) {
+            chomp;
+            $pages_list.=qq~<a href=?page=$_> $img_html_icon $_ </a>~; 
+            $pages_list.=qq~<a href=$url/index?page=$_ target="_blank"> $img_newwindow_icon</a> &nbsp; ~;
+
+            $pages_list3.=qq~<a href="?page=$_&edit=$editor_choice"> $img_html_icon $_ </a>~; 
+        }
+
+    ## get also the /www/html/site/pages.html  so you could copy them 
+    @pages_list2=`ls $html_path/ |grep -E 'html|css'`;
+    chomp @pages_list2;
+        foreach(@pages_list2) {
+            chomp;
+            $pages_list2.=qq~ <a href=?page=$_> $_ </a> ~;
+            $pages_list2.=qq~ <a href=$url/$_ target="_blank"> $img_newwindow_icon </a> &nbsp; ~;
+        }
+
+
+    ####################### load html page from cgi or /www/html
+    if ($content) { $page_html=$content;  }  else {$page_html=`cat '$html_dir/$page'`;  }
+    if (!$page_html) {  $page_html=`cat $html_dir/$page`;  chomp $page_html; }
+
+    $page_html =~s /</&lt/gi;  
+    #$page_html =~s /script>/script&gt/gi;
+    $page_html =~ s/script><\`+\`/script/gi;
+}
+
+sub editor_visual {  ############## html cms editor
+    ################### editor ckeditor
+    print qq~
+    <br>EDIT  $page 
+    <form action="$url/cms" METHOD="POST">
+    <textarea name="content" id="content" size="50" rows="80" cols="600">
+        $page_html 
+                </textarea>
+    </p>
+    </div>
+    <script src="https://cdn.ckeditor.com/4.13.0/standard/ckeditor.js"></script>
+    <script>
+        CKEDITOR.replace( 'content' );
+    </script>
+    <br><br>
+            Page name : <input type="text" id="save_page" name="save_page" size="50" value="$page">
+                    <input type="submit" value="Save">
+                    <input type="submit" value="Delete">
+            </form>
+    ~;
+}
+
+sub editor_text {    ############ edit only html
+
+    print qq~
+    <br><font>Edit  $img_html_icon  $page </font> </b> </font>
+
+    <div id="content" hidden data-html='' ></div>
+
+    <form action="$url/cms" METHOD="POST">
+        <textarea name="content" rows="30" cols="200" id="content" style="width: 98%; height: 70%; border: 0.2px solid grey">
+    $page_html		</textarea>
+        <br><br>
+        Page name : <input type="text" id="save_page" name="save_page" size="37" value="$page">
+            <input type="submit" value="Save">
+            <input type="submit" value="Delete"> <br><br>
+            Commit changes : <input type="text" id="Commit" name="Commit" size="50" placeholder="Commit your code changes" >
+        </form>
+    ~;
+}
+
+sub editor_text_2 {     ##### editor2 monaco
+
+    $page_html=~s/&lt/</gi;
+    $lang = $query->param('lang');  if(!$lang) {  $lang="css"; } 
+    print qq~
+    <style>
+        body {
+        font-family: "Helvetica", Sans-Serif;
+        background-color: #f5f4f4;
+     </style>
+
+       <link
+            rel="stylesheet"
+            data-name="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.20.0/min/vs/editor/editor.main"
+            href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.34.0/min/vs/editor/editor.main.min.css"
+        />
+   
+    
+        $img_html_icon $page
+        <div id="container" style="width: 100%; height: 96%; border: 0px solid grey"></div> 
+        <script>
+            var require = { paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.20.0/min/vs' } };
+        </script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.34.0/min/vs/loader.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.34.0/min/vs/editor/editor.main.nls.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.34.0/min/vs/editor/editor.main.js"></script>
+        <script>
+        
+	document.addEventListener('DOMContentLoaded', function(){
+            var editor = monaco.editor.create(document.getElementById('container'), {
+                value: [`$page_html`].join(''),
+                language: '$lang'
+            });  });
+        </script>
+
+    <link
+			data-name="vs/editor/editor.main"
+			rel="stylesheet"
+			href="node_modules/monaco-editor/min/vs/editor/editor.main.css"
+		/>
+
+
+
+ ~;
+}
+
+sub show_images {   ############ show the project images
+
+    print qq~ <br><br> Images: :  ~;
+    @images_list=`ls $html_path/images |grep -E 'jpg|png'`;
+        foreach(@images_list) {
+            chomp;
+            $counter++;
+            print qq~<img src="$images_url/$_" alt="$_" width="80" height="80"> $_  ~;         
+        }
+}
+
+sub recover_html {    ############  recover html from /BACKUP directory
+
+    if ($page) { $grep_file=qq~ | grep "$page" ~; }   ##### if there is $page find the recover file of the page
+    @backup_list_file=`ls -ta $path/HTML/BACKUP/ $grep_file`;
+
+            foreach(@backup_list_file) {
+                    chomp;
+                    $counter++;
+                    $file_name=$_;  $file_name=~s/\+/ /gi; $file_name=~s/html./html  /gi; $file_name=~s/T/ /g;
+                    $recover.=qq~
+                       <font color=#DCDCDC> $counter </font> &nbsp; &nbsp; 
+                       <a href="?page=BACKUP/$_">$img_html_icon  $file_name </a>  
+                        <a href="index?page=BACKUP/$_" target="_blank"> $img_newwindow_icon </a> <br>  ~;
+            }
+
+
+    print qq~ <br><br>Files from recover for $page- choose the file and save as main file 
+              <br><br> $recover 
+              <br><br> can't find the file <a href="cms?page=&edit=recover"> press here </a> ~;
+
+}
+
+sub upload_images {   ############ upload image 
+
+        # define location where uploaded files will be stored, notice that permissions to write are needed for upload directory
+    $uploaddir = '$images_url';
+    $query = new CGI;
+
+    # parse the name of file
+    $filename = $query->param("file");
+
+    # Index where starts the file name   
+    $index = rindex($filename,"\\");
+
+    # Gets the directory  path name from the file name
+    $dirName = substr($filename, 0,$index+1);
+
+    # Check the directory name
+    if($dirName ne ""){
+
+    # Concat the directory path name        
+    $uploaddir =  $uploaddir . $dirName;
+
+    # Make the directory if it does not exist
+    if(! -d $uploaddir){
+            mkpath $uploaddir;
+    }
+    }
+
+    $filename =~ s/.*[\/\\](.*)/$1/;
+
+    # gets file handle
+    $upload_filehandle = $query->upload("file");
+
+    # reads contents and saves it out
+    open UPLOADFILE, ">$uploaddir/$filename" || &upload_error;
+
+    # tells Perl to write the file in binary mode, rather than in text mode.
+    binmode UPLOADFILE;
+
+    while ( <$upload_filehandle> ) {
+    print UPLOADFILE;
+    }
+
+    # close the file
+    close UPLOADFILE;
+
+    #print $query->header();
+    #print "RESP.100";
+
+    sub upload_error {
+    print INFO "****ES ERROR***\n";        
+    print "RESP.200";
+    exit;
+    }
+}
+
+############################### project html
+sub html_start {   ############ html header
+
+    print qq~Content-Type: text/html 
+
+    <html><head>
+    ~;
+}
+
+sub print_menu {  ############ top menu of CMS 
+
+   print qq~
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/all.min.css">
+    <style>
+    \@import url('https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&display=swap');
+    body {
+        font-family: 'PT Sans', sans-serif;
+        font-size: 14px;
+    }
+    a:hover,
+    a:focus,
+    a:visited {
+        color: #6262e7;
+        outline: none;
+    }
+    a {
+        text-decoration: none;
+        font-size: 14px;
+        margin-right: 5px;
+    }
+    a > img {
+        width: 12px;
+        height: 12px;
+    }
+    textarea#content {
+        width: 100%;
+        line-height: 1.5;
+    }
+    font a {
+        color: #ffffff;
+        background-color: #6262e7;
+        padding: 4px 8px;
+        border: 1px solid #0101ff;
+        border-radius: 6px;
+        font-size: 14px;
+    }
+    input#save_page {
+        padding: 4px;
+        margin-right: 15px;
+    }
+    input[type="submit"] {
+        padding: 4px 7px;
+        margin-right: 5px;
+    }
+    </style>
+    </head><body> $menu <br><br>
+    
+    <center><br> CMS EDITOR V6 - $project</center>
+    Edit Structure:  $pages_Structure <br><br>
+    Edit Page:  $pages_list <br><br>
+    From html directory: $pages_list2 <br><br>
+    <font >
+    <a href="cms?page=$page&edit=html"> HTML EDITOR </a> &nbsp; &nbsp;
+    <a href="cms?page=$page&edit=text"> TEXT EDITOR </a>    &nbsp; &nbsp;
+    <a href="cms?page=$page&edit=recover"> RECOVER FILE </a> &nbsp; &nbsp;
+    <br> </b></font>
+    ~;
+}
+
+sub print_left_menu {   ####### left menu - visual studio -
+        print qq~ 
+
+    <style>
+    body {font-family: "Lato", sans-serif;}
+
+    .sidebar {
+    height: 100%;
+    width: 45px;
+    position: fixed;
+    z-index: 1;
+    top: 0;
+    left: 0;
+    background-color: #2c2c2c;
+    overflow-x: hidden;
+    padding-top: 50px;
+    }
+
+    .sidebar a {
+    padding: 16px 8px 6px 6px;
+    text-decoration: none;
+    font-size: 20px;
+    color: #818181;
+    display: block;
+    }
+
+    .sidebar a:hover {
+    color: #f1f1f1;
+    }
+
+    .main {
+    margin-left: 37px; /* Same as the width of the sidenav */
+    padding: 0px 4px;
+    }
+
+    @media screen and (max-height: 450px) {
+    .sidebar {padding-top: 15px;}
+    .sidebar a {font-size: 18px;}
+    }
+    </style>
+
+    <style>
+
+    .sidenav {
+    display: none;
+    height: 100%;
+    width: 250px;
+    position: fixed;
+    z-index: 1;
+    top: 0;
+    left: 48;
+    background-color: #f3f3f3;
+    overflow-x: hidden;
+    padding-top: 60px;
+    }
+
+    .sidenav a {
+    padding: 8px 0px 0px 0px;
+    text-decoration: none;
+    font-size: 14px;
+    color: #818181;
+    display: block;
+    }
+
+    .sidenav a:hover {
+    color: #000000;
+    }
+
+    .sidenav .closebtn {
+    position: absolute;
+    top: 0;
+    right: 25px;
+    font-size: 22px;
+    margin-left: 50px;
+    }
+
+    @media screen and (max-height: 450px) {
+    .sidenav {padding-top: 12px;}
+    .sidenav a {font-size: 12px;}
+    }
+    </style>
+
+    <div class="sidebar">
+    <a href="cms?page=$page&edit=home"  title="Home header"> <i> <img src="http://adadw.com/editor/1.png" width="22" height="18"></i> </a>
+    <a href="#contact" title="Open project pages list"> <span onclick="openNav()"> <i><img src="http://adadw.com/editor/2.png" width="22" height="22"></i></span></a>
+    <a href="cms?page=$page&edit=text" title="Edit page $page text editor"> <i><img src="http://adadw.com/editor/7.png" width="22" height="22"></i></a>
+    <a href="cms?page=$page&edit=editor2&lang=html" title="Edit $page with the new editor"> <i><img src="http://adadw.com/editor/7.png" width="22" height="22"></i></a>
+    <a href="#contact" title="Search in files"> <i><img src="http://adadw.com/editor/3.png" width="22" height="22"></i></a>
+    <a href="cms?page=$page&edit=recover" title="Recover files for page - $page"> <i><img src="http://adadw.com/editor/4.png" width="22" height="22"></i></a>
+    <a href="index?page=$page" target="_blank" title="Run and Debuge $page with the new window"> <i><img src="http://adadw.com/editor/5.png" width="22" height="22"></i></a>
+    <a href="cms?page=$page&edit=images" title="Manage project photos"> <i><img src="http://adadw.com/editor/6.png" width="22" height="22"></i></a>
+    <a href="cms?page=$page&edit=tools" title="Use tools"> <i><img src="http://adadw.com/editor/7.png" width="22" height="22"></i></a>
+    <a href="https://github.dev/Shaharch2016/perl_codes/blob/" title="Git Manager"> <i><img src="http://adadw.com/editor/8.png" width="22" height="22"></i></a>
+    </div>
+
+    <div class="main">
+
+
+
+    <div id="mySidenav" class="sidenav">
+    <a href="javascript:void(0)" class="closebtn" onclick="closeNav()">X</a>
+    $pages_list3
+    </div>
+
+    <script>
+    function openNav() {
+    document.getElementById("mySidenav").style.display = "block";
+    }
+
+    function closeNav() {
+    document.getElementById("mySidenav").style.display = "none";
+    }
+    </script>
+
+        ~;
+}
+
+sub html_images {   ########## load the project images
+
+    $img_html_icon=qq~ <img src="https://static.thenounproject.com/png/13694-200.png" width="11" height="9"> ~;
+    $img_newwindow_icon=qq~ <img src="https://static.thenounproject.com/png/299638-200.png" width="11" height="11">~; 
+}
+
+sub form_save  {  ########## form save page + backup the old page to $path/HTML/BACKUP/ file_name.html.date.time
+    $save_page = $query->param('save_page');
+    $content = $query->param('content'); chomp $content;
+
+    if ($save_page){
+        $file=`cp $path/HTML/$save_page $path/HTML/BACKUP/$save_page.$date`;
+        open(GREP, ">$path/HTML/$save_page");
+        print GREP "$content\n";
+        close GREP;
+
+        print " File $save_page was backup as HTML/BACKUP/$save_page.$date <br><br> and saved as - $save_page   -->";
+    }
+
+}
+1;
+
