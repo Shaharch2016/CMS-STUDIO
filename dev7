@@ -1,0 +1,765 @@
+#!/usr/bin/perl
+use CGI;
+use CGI::Carp qw(warningsToBrowser fatalsToBrowser);
+$query = new CGI;
+use CGI qw/:standard/; 
+### DEV7 perl system to edit the html inside pages - v7 -  9/3/2023
+###
+### all pages need to be in $path/HTML/ *.html   all pages pirectory
+### every change will save the html page in  $path/HTML/BACKUP/  backup directory
+
+$project="DEVELOPMENT STUDIO PRO 7 - ALFA VERSION 1.1v";
+$file_name="dev7";
+our $path = "/var/www/cgi-bin/MEGAVAST/CMS";
+our $html_dir = "$path/CODE";
+our $code_dir = "$path/CODE";
+our $code_dir_backup = "$path/CODE/BACKUP";
+our $html_path = "/var/www/html/CMS";
+$url="http://megavast.com/cms";
+$images_url="http://megavast.com/CMS/images";
+
+$editor_choice = $query->param('edit');  if (!$editor_choice) {$editor_choice="html"; }
+$content = $query->param('content');         #### for saving the changes after post
+$save_page = $query->param('save_page'); if ($save_page) { $page=$save_page;  }  ### page to save 
+$page = $query->param('page');               ## if (!$page) { $page="new_page.html"; } ## show the page text  ++ default page if empty
+    if ($save_page) { $page=$save_page;  }   ### page to save
+    if ($page =~ m/pl/ or $page =~ m/txt/ or $page =~ m/py/){ } else{ $page="readme.txt"; }
+    if ($page =~ m/BACKUP/){ $page =~s/ /+/gi; }
+$lang = $query->param('lang'); 
+    if ($lang =~ m/pl/) {$lang="perl"; }
+    elsif ($lang =~ m/python/) {$lang="py"; }
+    else {$lang="perl";}
+
+#$menu=`cat $html_dir/menu.html`;
+$date=`date -Is`; chomp $date;
+
+############################## start :-) 
+html_start();
+html_images();
+get_pages();
+print_left_menu();
+
+if ($editor_choice eq "home")    { print_menu(); get_page_info(); editor_text(); } 
+if ($editor_choice eq "text")    { editor_visual(); }
+if ($editor_choice eq "recover") { recover_html(); }
+if ($editor_choice eq "images")  { show_images (); upload_images(); }
+if ($editor_choice eq "html")    { print_menu(); get_page_info(); editor_text(); }    
+if ($editor_choice eq "editor2")    { get_page_info(); editor_text_2(); }
+if ($editor_choice eq "new")    { editor_text(); }
+if ($editor_choice eq "tools")    { print_tools(); }
+if ($editor_choice eq "search")    { print_search(); }
+if ($editor_choice eq "copy_html_url")   { copy_html_url ();  }
+if ($editor_choice eq "refactor")   { refactor ();  }
+
+form_save();
+########################### finished :-) 
+
+
+sub get_pages {     ######### ls html and CSS pages   
+
+    ######## PAGES Structure are 
+    @pages_Structure=`ls $html_dir/ |grep -E 'readme.txt|footer.html'`;
+        foreach(@pages_Structure) {
+            chomp;
+            
+            $pages_Structure.=qq~ <a href=?page=$_> $_ </a>  ~; 
+            $pages_Structure.=qq~ <a href=$url/dev7?page=$_ target="_blank"> $img_newwindow_icon</a> &nbsp; ~;
+        }
+        if (!$pages_Structure) { $pages_Structure = "( please create -  README.txt for the project  ) "; }
+    
+    ######## get code pages list 
+    @pages_list=`ls $code_dir/ |grep -E '.pl|.txt|.py|.js|.html|.sh'`;
+        foreach(@pages_list) {
+            chomp;
+            $pages_list.=qq~<tr><td> <a href=?page=$_&edit=editor2&lang=perl> $img_html_icon $_ </a></td><td> <font color="#e0e0eb" size=2>  last edit </font></tr>~; 
+            $pages_list3.=qq~<a href="?page=$_&edit=editor2&lang=$lang"> $img_html_icon $_ </a>~; #### pages list for left menu
+        }
+
+    ####### get also the /www/html/site/pages.html  so you could copy them 
+    @pages_list2=`ls $html_path/ |grep -E 'html|css'`;
+    chomp @pages_list2;
+        foreach(@pages_list2) {
+            chomp;
+            $pages_list2.=qq~ <a href=?page=$_> $_ </a> ~;
+            $pages_list2.=qq~ <a href=$url/$_ target="_blank"> $img_newwindow_icon </a> &nbsp; ~;
+        }
+
+
+    ####################### load html page from cgi or /www/html
+    if ($content) { $page_html=$content;  }  
+        else {  
+            $file="$html_dir/$page";
+            #open (FILE, '<', $file) or return;   while(<FILE>) {  $page_html.= "$_"; }  close FILE;
+            $page_html=`cat '$file'`;
+            chomp $page_html;
+        }       
+
+    if (!$page_html) {  $page_html=`cat $html_dir/$page`;  chomp $page_html; }
+
+    $page_html=~s/&lt/</gi;
+    # $page_html=~s/\`/&#96;/g;
+    $page_html=~s/([\`])/\\$1/g;
+
+}
+
+sub get_page_info {   #### get info about page code - refactor recommand or info -   $page_code_refactor  $page_code_recommand $page_code_info
+
+    #   $page $page_code_refactor  $page_code_recommand $page_code_info
+
+    ##### find if the page is part of -  refactor recommand or info show all the other set
+    if ($page =~ /\.info|\.recommand|\.refactor/) { 
+        $page_name=$page;
+        $page_name =~ s/\.recommand|\.info|\.refactor//gi;
+        #$page_original=qq~<td width="270px"> $img_html_icon <a href="?page=$page_name&edit=$editor_choice&lang=$lang"> $page_name </a></td>~;
+        $page=$page_name;
+       }
+    
+    ########## main code page
+    $page_code_main=qq~ <td bgcolor="#d1d1e0" width="270px">$img_html_icon <a href="?page=$page&edit=$editor_choice&lang=$lang"> $page </a> </td> ~;
+
+    ########## page refactor = if exist show it 
+    $page_code_refactor_name="$page.refactor";    ### write the refactor file name. 
+    $page_code_refactor_name_check=`ls $code_dir/$page_code_refactor_name`;
+    #if (-e $code_dir/$page_code_refactor_name) { $page_code_refactor=qq~ <a href="?page=$page_code_refactor_name">$page_code_refactor_name</a>  ~; }
+    if ($page_code_refactor_name_check) { $page_code_refactor=qq~ <td width="180px> $img_html_icon <a href="?page=$page_code_refactor_name&edit=$editor_choice&lang=$lang">Code Refactor</a></td>  ~; }
+
+    ########## page recommand = if exist show it 
+    $page_code_recommand_name="$page.recommand";
+    $page_code_recommand_name_check=`ls $code_dir/$page_code_recommand_name`;
+    if ($page_code_recommand_name_check) {$page_code_recommand=qq~ <td width="200px>$img_html_icon  <a href="?page=$page_code_recommand_name&edit=$editor_choice&lang=$lang">Code Recommandations</a></td>  ~; }
+
+    ########## page code info - code description = if exist show it 
+    $page_code_info_name="$page.info";
+    $page_code_info_name_check=`ls $code_dir/$page_code_info_name`;
+    if ($page_code_info_name_check) { $page_code_info=qq~<td width="180px> $img_html_icon <a href="?page=$page_code_info_name&edit=$editor_choice&lang=$lang"> Info</a></td>  ~; }
+
+    $page_create_new=qq~<td><a href="?page=new_file_name.pl&edit=new"> +.. </a></td> ~;   #### create new file - editor1 
+
+    ####### create the top of editor2 with files names
+    $editor_top_print=qq~<table><tr> $page_code_main   $page_original  $page_code_refactor  $page_code_recommand   $page_code_info  $page_create_new </tr></table> ~;
+
+}
+
+sub editor_visual {  ############## html cms editor
+    ################### editor ckeditor
+    print qq~
+    <br>EDIT  $page 
+    <form action="$url/dev7" METHOD="POST">
+    <textarea name="content" id="content" size="50" rows="80" cols="600">
+        $page_html 
+                </textarea>
+    </p>
+    </div>
+    <script src="https://cdn.ckeditor.com/4.13.0/standard/ckeditor.js"></script>
+    <script>
+        CKEDITOR.replace( 'content' );
+    </script>
+    <br><br>
+            Page name : <input type="text" id="save_page" name="save_page" size="50" value="$page">
+                    <input type="submit" value="Save">
+                    <input type="submit" value="Delete">
+            </form>
+    ~;
+}
+
+sub editor_text {    ############ visual edit for text and html
+    $page_html;
+    $page;
+    $url;
+
+    print qq~
+    
+
+    <br><font>Edit  $img_html_icon  $page &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; $page_code_refactor  $page_code_recommand $page_code_info</font> </b> </font>
+    <br> <br>
+    <div id="content" hidden data-html='' ></div>
+
+    <form action="$url/$file_name" METHOD="POST">
+        <textarea name="content" rows="20" cols="150" id="content" style="width: 100%; height: 50%; border: 0px solid grey">
+    $page_html		</textarea>
+        <br><br>
+        Page name : <input type="text" id="save_page" name="save_page" size="37" value="$page">
+            <input type="submit" value="Save">
+            <input type="submit" value="Delete"> <br><br>
+            Commit changes : <input type="text" id="Commit" name="Commit" size="50" placeholder="Commit your code changes" >
+        </form>
+    ~;
+}
+
+sub editor_text_2 {   ################## editor2 monaco
+    $lang = $query->param('lang');  if(!$lang) {  $lang="css"; } 
+
+    #    $page_html=~s/</&lt;/gi;
+    #    $page_html=~s/\`/&#96;/g;
+    #   $page_html=~s/\\/&#92;/g;
+    $page_html=~s/([\/\$\\\`])/\\$1/g;
+     @page_html=$page_html;
+   
+
+    print qq~
+    <style>
+        body {
+        font-family: "Helvetica", Sans-Serif;
+        background-color: #f5f4f4;
+     </style>
+
+       <link
+            rel="stylesheet"
+            data-name="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.20.0/min/vs/editor/editor.main.css"
+            href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.34.0/min/vs/editor/editor.main.min.css"
+        />
+   
+    
+        $editor_top_print 
+        <div id="container" style="width: 100%; height: 96%; border: 0px solid grey"></div> 
+        <script>
+            var require = { paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.20.0/min/vs' } };
+        </script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.34.0/min/vs/loader.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.34.0/min/vs/editor/editor.main.nls.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.34.0/min/vs/editor/editor.main.js"></script>
+        <script src="https://code.jquery.com/jquery-3.6.3.min.js"></script>
+        <script>
+        
+      var editor;
+	document.addEventListener('DOMContentLoaded', function(){
+        
+           editor = monaco.editor.create(document.getElementById('container'), {
+                value: [`@page_html`].join(''),
+                language: '$lang'
+            });  });
+
+    function save() { \$.ajax({
+        type: "POST",
+        url: "$url/$file_name",
+        data: {save_page:'$page', content:editor.getValue()},
+        success: function (data, status, xhr) {
+            console.log('status: ' + status + ', data: ' + data);
+        },
+        error: function (jqXhr, textStatus, errorMessage) {
+            console.log('Error' + errorMessage);
+        }});
+        
+        return false
+        }
+
+        </script>
+
+        <input type="text" id="save_page" name="save_page" size="37" value="$page">
+        <input type="submit" value="Save" id="save_page" name="save_page" onclick="save()">
+
+    <link
+			data-name="/CMS/editor.main"
+			rel="stylesheet"
+			href="/CMS/editor.main.css"
+		/>
+
+
+
+ ~;
+}
+
+sub show_images {    ############ show the project images
+
+    print qq~ <br><br> Images: :  ~;
+    @images_list=`ls $html_path/images |grep -E 'jpg|png'`;
+        foreach(@images_list) {
+            chomp;
+            $counter++;
+            print qq~<img src="$images_url/$_" alt="$_" width="80" height="80"> $_  ~;         
+        }
+}
+
+sub recover_html {    ############  recover html from /BACKUP directory
+
+    if ($page) { $grep_file=qq~ | grep "$page" ~; }   ##### if there is $page find the recover file of the page
+    @backup_list_file=`ls -ta $code_dir_backup/ $grep_file`;
+
+            foreach(@backup_list_file) {
+                    chomp;
+                    $counter++;
+                    $recover_file_name=$_;  $recover_file_name=~s/\+/ /gi; $recover_file_name=~s/html./html  /gi; $recover_file_name=~s/T/ /g;
+                    $recover.=qq~
+                       <font color=#DCDCDC> $counter </font> &nbsp; &nbsp; 
+                       <a href="?page=BACKUP/$_">$img_html_icon  $recover_file_name </a>  
+                        <a href="index?page=BACKUP/$_" target="_blank"> $img_newwindow_icon </a> <br>  ~;
+            }
+
+
+    print qq~ <br><br>Files from recover for $page- choose the file and save as main file 
+              <br><br> $recover 
+              <br><br> can't find the file <a href="$file_name?page=&edit=recover"> press here </a> ~;
+
+}
+
+sub upload_images {   ############ upload image 
+
+        # define location where uploaded files will be stored, notice that permissions to write are needed for upload directory
+    $uploaddir = '$images_url';
+    $query = new CGI;
+
+    # parse the name of file
+    $filename = $query->param("file");
+
+    # Index where starts the file name   
+    $index = rindex($filename,"\\");
+
+    # Gets the directory  path name from the file name
+    $dirName = substr($filename, 0,$index+1);
+
+    # Check the directory name
+    if($dirName ne ""){
+
+    # Concat the directory path name        
+    $uploaddir =  $uploaddir . $dirName;
+
+    # Make the directory if it does not exist
+    if(! -d $uploaddir){
+            mkpath $uploaddir;
+    }
+    }
+
+    $filename =~ s/.*[\/\\](.*)/$1/;
+
+    # gets file handle
+    $upload_filehandle = $query->upload("file");
+
+    # reads contents and saves it out
+    open UPLOADFILE, ">$uploaddir/$filename" || &upload_error;
+
+    # tells Perl to write the file in binary mode, rather than in text mode.
+    binmode UPLOADFILE;
+
+    while ( <$upload_filehandle> ) {
+    print UPLOADFILE;
+    }
+
+    # close the file
+    close UPLOADFILE;
+
+    #print $query->header();
+    #print "RESP.100";
+
+    sub upload_error {
+    print INFO "****ES ERROR***\n";        
+    print "RESP.200";
+    exit;
+    }
+}
+
+sub refactor {        ### refactor and codereivew using chatgpt
+    ### refactor
+    $code_refactor_perl_text=qq~Please refactor this code, first line create the purpose of the code, add comment for every line: ~;
+    $code_recommand_text=qq~write if there any perl libraries that are more efficient to use instead or any other suggestions for better coding this code, the code is: ~;
+    $code_info_text=qq~create summerze of the code, what is the purpose of the code, and how the code functions, step by step.~;
+
+    chomp $refactor_perl_text;
+    chomp $page_html;
+
+    if ($page) {
+
+         ############# start the refactor proccess and write it into a new file name  -  $page_refactor.pl
+        open(GREP, ">$code_dir/refactor_tmp");
+        print GREP "$code_refactor_perl_text\n $page_html\n";
+        close GREP;
+       
+        $page_refactor="$page.refactor";  
+        $chatgpt_api=`cat $code_dir/refactor_tmp | $path/chatgpt_api_split.pl  >  $code_dir/$page_refactor &`;
+    
+        ################ recommandcode info
+        open(GREP, ">$code_dir/recommand_tmp");
+        print GREP "$code_recommand_text\n $page_html\n";
+        close GREP;
+
+        $page_recommand="$page.recommand";  
+        $chatgpt_api=`cat $code_dir/recommand_tmp | $path/chatgpt_api_split.pl  >  $code_dir/$page_recommand &`;
+
+        ################ get info - documentation 
+        open(GREP, ">$code_dir/info_tmp");
+        print GREP "$code_info_text\n $page_html\n";
+        close GREP;
+
+        $page_info="$page.info";  
+        $chatgpt_api=`cat $code_dir/info_tmp | $path/chatgpt_api_split.pl  >  $code_dir/$page_info &`;
+
+
+
+    #### print the page
+        $page_html=~s/\n/<br>/gi;
+        print qq~ Refactor & programing recommandation &  for the code file $page will take a few minuts.........
+        <br><br> <font color=grey size=1px><i>  $page_html </i></font>
+        ~;
+
+        ###### start the refactor proccess and write it into a new file name  -  $page_refactor.pl
+        $page_refactor="$page.refactor";  
+        $chatgpt_api=`cat $code_dir/refactor_tmp | $path/chatgpt_api_split.pl  >  $code_dir/$page_refactor &`;
+
+        $i = 1; while ($i <= 12) { print "Processing... $i\n"; sleep(1); $i++; }
+
+        $tmp_read=`cat $code_dir/$page_refactor`;
+        ##### print the chatgpt api result
+        print qq~ 
+        <br><br>new Code refactor file : <a href="?page=$page_refactor&edit=editor2&lang=perl"> $page_refactor </a> create 
+        <br><br>new code recommandation file : <a href="?page=$page_recommand&edit=editor2&lang=perl"> $page_recommand </a> create
+        <br><br>new Code Documentation file : <a href="?page=$page_info&edit=editor2&lang=perl"> $page_info </a> create
+        <br><br> api output :  $chatgpt_api  
+        <br><br> new file : <br>  $tmp_read~;
+    }
+}
+
+sub chatgpt_api {    #### chatgpt api with json
+
+    use JSON;
+
+    my $api_url     = "https://api.openai.com/v1/completions"; # https://api.openai.com/v1/edits";  ###   https://api.openai.com/v1/engines/davinci-codex/completions
+    #my $temperature = 0.5;  # A value between 0 and 1 that controls the level of randomness in the model's response.
+    my $temperature = 1;  # A value between 0 and 1 that controls the level of randomness in the model's response.
+    my $api_key     = "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";
+    my $model       = "text-davinci-003";  # code-davinci-003    text-davinci-edit-001 code-davinci-003  davinci-codex
+
+    my $json = to_json( {
+                    model => $model,
+                    prompt => join("", <DATA>),
+                    temperature => $temperature,
+                    max_tokens => 2001
+            });
+    $json =~ s/'/'"'"'/g;
+
+    #print `/usr/bin/echo '$json'`; exit;
+    my $answer=`curl -s "$api_url" -H "Authorization: Bearer $api_key" -H "Content-Type: application/json" -H "Accept: application/json" --data '$json'`;
+    chomp $answer;
+
+    ##print "$answer\n";
+
+    eval {
+        my $json_answer = from_json($answer);
+        use Data::Dumper;
+        print Dumper($json_answer);
+    };
+    if ($@) {
+        print "$@\n";
+        print "$answer\n";
+    }
+
+
+}
+
+############################### project html
+
+sub html_start {   ############ html header
+
+    print qq~Content-Type: text/html 
+
+    <html><head>
+    <title>DEVELOPMENT STUDIO PRO 7 - $page</title>
+    <link rel="icon" type="image/x-icon" href="http://megavast.com/images/logo-part.png">
+
+        <style>
+    \@import url('https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&display=swap');
+    body {
+        font-family: 'PT Sans', sans-serif;
+        font-size: 12px;
+        background-color: #fafafa;
+          padding: 0px 0px;
+          border: 0px;
+    }
+    a:hover,
+    a:focus,
+    a:visited {
+        
+        outline: none;
+    }
+    a {
+        text-decoration: none;
+        font-size: 14px;
+        margin-right: 5px;
+    }
+    a > img {
+        width: 12px;
+        height: 12px;
+    }
+    textarea#content {
+        width: 100%;
+        line-height: 1.8;
+    }
+    textarea {
+        border-radius: 6px;
+        padding: 12px 20px;
+        box-sizing: border-box;
+        border: 2.1px solid #f0f0f5;
+        border-radius: 1px;
+        background-color: #ffffff;
+        font-size: 12px;
+    }
+    font a {
+        color: #ffffff;
+        background-color: #e6e6e6;
+        padding: 1px 24px;
+        border: 1px solid #e6e6e6;
+        border-radius: 1px;
+        font-size: 14px;
+    }
+    input#save_page {
+        padding: 4px;
+        margin-right: 15px;
+    }
+    input[type="submit"] {
+        padding: 4px 7px;
+        margin-right: 5px;
+    }
+
+
+          .table-container {
+            width: 70%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border-collapse: collapse;
+          }
+          
+          .table {
+            width: 100%;
+            margin-bottom: 0;
+            border-spacing: 0;
+          }
+          
+          .table th,
+          .table td {
+            padding: 3px 16px;
+            border: 0px solid #ffffff;
+          }
+          
+          .table th {
+            font-weight: 600;
+            background-color: #f6f8fa;
+          }
+          
+          .table td {
+            background-color: #fff;
+            vertical-align: middle;
+          }
+          
+          .table tr:nth-child(even) td {
+            background-color: #fafafa;
+          }
+          
+          .table-hover tbody tr:hover td {
+            background-color: #f1f8ff;
+          }
+          
+          .no-data {
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+          }
+       
+    </style>
+
+
+    
+    ~;
+}
+
+sub print_menu {  ############ top menu of CMS From html directory: $pages_list2 <br><br>
+
+   print qq~
+    
+
+    </head><body> $menu 
+    
+    <center> <img src="http://megavast.com/images/logo-part.png" width="18" height="12">  $project </center>
+    <br>
+    <center>
+    <div class="divTable" style="width: 95%;" align="left"> <div class="table-container">
+          <table class="table table-hover"><thead><tr><td><img src="https://cdn.icon-icons.com/icons2/1379/PNG/512/folderblueprivate_93201.png" width="18" height="18"> 
+          <font color="#66a3ff" size=2px></b> Project: $ project - 37 files</font></th><td></td></tr></thead>
+            <tbody>
+
+      $pages_list 
+    </tbody></table></div></center><br><Br>
+    <font >
+     <a href="$file_name?page=new_file_name.pl&edit=new">NEW FILE </a> 
+    <a href="$file_name?page=$page&edit=editor2">EDITOR </a> 
+    <a href="$file_name?page=$page&edit=refactor" title="Refactor and code-review the code"> REFACTOR CODE</a>    
+    <a href="$file_name?page=$page&edit=recover"> RECOVER FILE </a>  
+    <a href="$file_name?page=$page&edit=search"> SERACH IN FILES </a> 
+    <a href="$file_name?page=$page&edit=tools"> TOOLS </a> <BR><br><br><br>
+    ~;
+}
+
+sub print_left_menu {   ####### left menu - visual studio -
+        print qq~ 
+
+    <style>
+    body {font-family: "Lato", sans-serif;}
+
+    .sidebar {
+    height: 100%;
+    width: 45px;
+    position: fixed;
+    z-index: 1;
+    top: 0;
+    left: 0;
+    background-color: #2c2c2c;
+    overflow-x: hidden;
+    padding-top: 50px;
+    }
+
+    .sidebar a {
+    padding: 16px 8px 6px 6px;
+    text-decoration: none;
+    font-size: 20px;
+    color: #818181;
+    display: block;
+    }
+
+    .sidebar a:hover {
+    color: #f1f1f1;
+    }
+
+    .main {
+    margin-left: 37px; /* Same as the width of the sidenav */
+    padding: 0px 4px;
+    }
+
+    @media screen and (max-height: 450px) {
+    .sidebar {padding-top: 15px;}
+    .sidebar a {font-size: 18px;}
+    }
+    </style>
+
+    <style>
+
+    .sidenav {
+    display: none;
+    height: 100%;
+    width: 340px;
+    position: fixed;
+    z-index: 1;
+    top: 0;
+    left: 48;
+    background-color: #f3f3f3;
+    overflow-x: hidden;
+    padding-top: 20px;
+    }
+
+    .sidenav a {
+    padding: 8px 0px 0px 0px;
+    text-decoration: none;
+    font-size: 14px;
+    color: #818181;
+    display: block;
+    }
+
+    .sidenav a:hover {
+    color: #000000;
+    }
+
+    .sidenav .closebtn {
+    position: absolute;
+    top: 0;
+    right: 25px;
+    font-size: 22px;
+    margin-left: 50px;
+    }
+
+    @media screen and (max-height: 450px) {
+    .sidenav {padding-top: 12px;}
+    .sidenav a {font-size: 12px;}
+    }
+    </style>
+
+    <div class="sidebar">
+    <a href="$file_name?" title="Home header"> <i> <img src="http://megavast.com/images/logo-part.png" width="22" height="18"></i> </a>
+    <a href="$file_name?page=$page&edit=home&lang=$lang"  title="Home header"> <i> <img src="http://adadw.com/editor/1.png" width="22" height="18"></i> </a>
+    <a href="#contact" title="Open project pages list"> <span onclick="openNav()"> <i><img src="http://adadw.com/editor/2.png" width="22" height="22"></i></span></a>
+    <a href="$file_name?page=$page&edit=editor2&lang=$lang" title="Edit $page with the new editor"> <i><img src="http://adadw.com/editor/7.png" width="22" height="22"></i></a>
+    <a href="$file_name?page=$page&edit=search" title="Search in files"> <i><img src="http://adadw.com/editor/3.png" width="22" height="22"></i></a>
+    <a href="$file_name?page=$page&edit=recover" title="Recover files for page - $page"> <i><img src="http://adadw.com/editor/4.png" width="22" height="22"></i></a>
+    <a href="$file_name?page=$page&edit=refactor" title="Refactor and code-review the code"> <i><img src="http://adadw.com/editor/5.png" width="22" height="22"></i></a>
+    <a href="$file_name?page=$page&edit=images" title="Manage project photos"> <i><img src="http://adadw.com/editor/6.png" width="22" height="22"></i></a>
+    <a href="$file_name?page=$page&edit=tools" title="Use tools"> <i><img src="http://adadw.com/editor/7.png" width="22" height="22"></i></a>
+    <a href="https://github.dev/Shaharch2016/perl_codes/blob/" title="Git Manager"> <i><img src="http://adadw.com/editor/8.png" width="22" height="22"></i></a>
+    </div>
+
+    <div class="main">
+
+
+
+    <div id="mySidenav" class="sidenav">
+    <a href="javascript:void(0)" class="closebtn" onclick="closeNav()">X</a>
+    $pages_list3
+    </div>
+
+    <script>
+    function openNav() {
+    document.getElementById("mySidenav").style.display = "block";
+    }
+
+    function closeNav() {
+    document.getElementById("mySidenav").style.display = "none";
+    }
+    </script>
+
+        ~;
+    ## <a href="$file_name?page=$page&edit=text&lang=$lang"" title="Edit page $page text editor"> <i><img src="http://adadw.com/editor/7.png" width="22" height="22"></i></a> text old editor - dont need here 
+
+}
+
+sub html_images {   ########## load the project images
+
+    $img_html_icon=qq~ <img src="https://static.thenounproject.com/png/13694-200.png" width="11" height="9"> ~;
+    $img_newwindow_icon=qq~ <img src="https://static.thenounproject.com/png/299638-200.png" width="11" height="11">~; 
+}
+
+sub form_save  {  ########## form save page + backup the old page to $path/HTML/BACKUP/ file_name.html.date.time
+    $save_page = $query->param('save_page');
+    $content = $query->param('content'); chomp $content;
+
+    if ($save_page){
+        $file=`cp $code_dir/$save_page $code_dir/BACKUP/$save_page.$date`;
+        open(GREP, ">$code_dir/$save_page");
+        print GREP "$content\n";
+        close GREP;
+
+        print " File $save_page was backup as $code_dir/BACKUP/$save_page.$date <br><br> and saved as - $save_page   -->";
+    }
+
+}
+
+sub print_tools {  ######### print list of tools for use
+
+    print qq~ <b> Tools for use - </b><br><br><br>
+     Photoshop Online - <a href="https://www.photopea.com/" target="_blank"> $img_newwindow_icon </a> <br><br>
+    Html live tests editor<a href="https://www.w3schools.com/cssref/tryit.php?filename=" target="_blank"> $img_newwindow_icon </a> <br><br>
+    ~;
+}
+
+sub print_search {  ######## search result from the html directory
+
+     $search = $query->param('search');
+
+    print qq~ 
+    <br><br> <form action="$url/$file_name?edit=search" METHOD="POST">
+           Search on HTML pages : 
+           <input type="text" id="search" name="search" size="50" value="$search">
+            <input type="hidden" id="edit" name="edit" value="search" />
+            <input type="submit" value="Search">
+            </form> ~;
+
+
+    if ($search){  
+        @search_result=`grep "$search" $path/HTML/*`;
+
+        foreach (@search_result){ 
+            chomp;
+            $_=~s/\/n/<br><br>/gi;
+            $_=~s/$html_dir\//<br><br><a href=cms?edit=home&page=/gi;
+            $_=~s/: /"> edit html <\/a>"/gi;
+            $search_result_html.=qq~ $_ ~;
+        }
+        
+        print qq~ <b> Search result for - $search :  </b> <br><br> $search_result_html  ~;
+    }
+}
+
+1;
